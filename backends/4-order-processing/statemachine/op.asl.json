@@ -65,12 +65,12 @@
           "BackoffRate": 2
         }
       ],
-      "Next": "Capacity Avialable?",
+      "Next": "Capacity Available?",
       "ResultSelector": {"modified.$": "$.Payload.isCapacityAvailable"},
       "ResultPath":"$.isCapacityAvailable",
       "OutputPath":"$"
     },
-    "Capacity Avialable?": {
+    "Capacity Available?": {
       "Type": "Choice",
       "Choices": [
         {
