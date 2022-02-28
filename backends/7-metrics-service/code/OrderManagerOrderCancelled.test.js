@@ -6,6 +6,7 @@ const AWS = require('aws-sdk')
 AWS.config.update({region: process.env.AWS_REGION})
 const cloudWatch = new AWS.CloudWatch({apiVersion: '2010-08-01'})
 const eventbridge = new AWS.EventBridge()
+const ssm = new AWS.SSM()
 
 const putEventsParams = {
   Entries: [
@@ -26,7 +27,7 @@ const putEventsParams = {
         "userId": "robot"
       }),
       DetailType: 'OrderManager.OrderCancelled',
-      EventBusName: 'Serverlesspresso', // get from ssm?
+      EventBusName: 'will-retrieve-from-ssm', 
       Source: "awsserverlessda.serverlesspresso", // get from ssm?
       Time: new Date
     }
@@ -39,7 +40,8 @@ metricNamespace = `${appName}-dev`
 
 
 /////////// FUTURE SLS TEST LIBRARY ///////
-// todo add small jitter?
+// todo add small jitter?  pass in backoff parameters in a struct/class with 
+// backoff, max-wait 
 const exponentialDelay = (retryCount, backoff) => new Promise(resolve => setTimeout(resolve, 1000 * backoff ** retryCount));
 
 const _getWithRetry = async (apiCall, checkApiCallResult, maxRetries, maxEndTime, retryCount = 0, lastError = null) => {
@@ -77,11 +79,18 @@ const getWithRetry = async (apiCall, checkApiCallResult, maxRetries, maxEndTime)
 }
 ///////////////////////////
 
-test('cancelled order triggered through eb', async () => {
+test('cancelled order generates CloudWatch metric', async () => {
   // metrics are reported at the start of the minute (for minute metrics) so backtrack 60 seconds
   // (todo could zero out seconds?)
   testStartTime = new Date(new Date().getTime() - 60000)
 
+  // test that part of our input interface (SSM parameter) is present
+  eventBusParm = await ssm.getParameter({ Name: '/Serverlesspresso/core/eventbusname' }).promise()
+  expect(eventBusParm['Parameter']['Type']).toBe('String')
+  expect(eventBusParm['Parameter']['Value'].length).toBeGreaterThan(0)
+  putEventsParams['Entries'][0]['EventBusName'] = eventBusParm['Parameter']['Value']
+
+  // generate the expected input -- an event in EventBridge
   await eventbridge.putEvents(putEventsParams).promise()
   console.log('EventBridge event sent')
 
@@ -145,6 +154,11 @@ test('cancelled order triggered through eb', async () => {
   // {"ResponseMetadata":{"RequestId":"c7ee1b64-b81f-4a8e-9425-f65cc87ec2e3"},"MetricDataResults":[{"Id":"testStatAvg","Label":"Order","Timestamps":[],"Values":[],"StatusCode":"Complete","Messages":[]}],"Messages":[]}
   checkResult = (data) => data['MetricDataResults'][0]['Timestamps'].length > 0
 
-  await getWithRetry(apiCall, checkResult, 5, endTime)
+  // poll for CloudWatch data
+  cloudWatchData = await getWithRetry(apiCall, checkResult, 5, endTime)
+
+  // confirm that the value is correct
+  expect(cloudWatchData['MetricDataResults'][0]['Values'].length).toBeGreaterThan(0)
+  expect(cloudWatchData['MetricDataResults'][0]['Values'][0]).toBe(1)
   
 }, TIMEOUT_S*1000);
