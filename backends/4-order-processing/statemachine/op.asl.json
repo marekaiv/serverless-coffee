@@ -16,7 +16,8 @@
           "ErrorEquals": [
             "Lambda.ServiceException",
             "Lambda.AWSLambdaException",
-            "Lambda.SdkClientException"
+            "Lambda.SdkClientException",
+            "States.TaskFailed"
           ],
           "IntervalSeconds": 2,
           "MaxAttempts": 6,

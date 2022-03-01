@@ -1,0 +1,17 @@
+{
+  "name": "order-sfn-test",
+  "version": "1.0.0",
+  "description": "",
+  "main": "test_order_proc_sfn.js",
+  "scripts": {
+    "test": "jest"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "jest": "^27.5.1"
+  },
+  "dependencies": {
+    "aws-sdk": "^2.1083.0"
+  }
+}
