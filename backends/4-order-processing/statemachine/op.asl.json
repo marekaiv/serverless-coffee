@@ -232,6 +232,7 @@
             }
         ]
       },
+      "ResultPath": "$.shopNotReadyTaskResult",
       "Next": "Emit - order finished"
     },
     
