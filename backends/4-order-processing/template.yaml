@@ -42,6 +42,10 @@ Parameters:
     Type: AWS::SSM::Parameter::Value<String>
     Description: "Arn of Lambda function that returns if queue is ready, easy"
     Default: '/Serverlesspresso/capacity/IsCapacityAvailableFunctionName'
+  LogRetentionInDays:
+    Type: Number
+    Default: 14
+    Description: CloudWatch Logs retention period
 
 # More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 
@@ -102,6 +106,34 @@ Resources:
             FunctionName: !Ref IsStoreOpenFunctionName
         - LambdaInvokePolicy:
             FunctionName: !Ref IsCapacityAvailableFunctionName
+        - LambdaInvokePolicy: # needs to be injected
+            FunctionName: 'sls-task-emulator'
+        - Version: 2012-10-17
+          Statement:
+          - Effect: Allow
+            Action:
+              - "logs:CreateLogDelivery"
+              - "logs:GetLogDelivery"
+              - "logs:UpdateLogDelivery"
+              - "logs:DeleteLogDelivery"
+              - "logs:ListLogDeliveries"
+              - "logs:PutResourcePolicy"
+              - "logs:DescribeResourcePolicies"
+              - "logs:DescribeLogGroups"
+            Resource: '*'
+      Logging:
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt OrderProcessorStateMachineLog.Arn
+        IncludeExecutionData: True
+        Level: ALL
+
+  OrderProcessorStateMachineLog:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: "/aws/stepfn/OrderProcessorStateMachine"
+      RetentionInDays: !Ref LogRetentionInDays
+
 
   OrderProcessorStateMachineParameter:
     Type: "AWS::SSM::Parameter"
