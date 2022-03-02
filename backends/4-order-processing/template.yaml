@@ -161,6 +161,37 @@ Resources:
           Id: "OrderProcessorStateMachine"
           RoleArn: !GetAtt EventBridgeIAMrole.Arn
 
+  # Injected for testing
+  TestEventBridgeListenerQueue:
+    Type: AWS::SQS::Queue
+    Properties: 
+      MessageRetentionPeriod: 600
+
+  TestEventBridgeListenerQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      PolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: events.amazonaws.com
+          Action: SQS:SendMessage
+          Resource: !GetAtt TestEventBridgeListenerQueue.Arn
+      Queues:
+        - Ref: TestEventBridgeListenerQueue
+
+  TestEventBridgeListener:
+    Type: AWS::Events::Rule
+    Properties: 
+      Description: "Injected by SAM Testing Library for testing"
+      EventBusName: !Ref CoreEventBusName
+      EventPattern:
+        source:
+        - prefix: ''
+      State: "ENABLED"
+      Targets: 
+        - Arn: !GetAtt TestEventBridgeListenerQueue.Arn
+          Id: TestCatchAll
 
   ##########################################################################
   #  IAM roles and policies                                               #
@@ -268,3 +299,7 @@ Outputs:
   ResumerFunction:
     Description: LambdaSfnResume function name
     Value: !Ref LambdaSfnResume
+  # Injected by SAMTL
+  TestEventBridgeListenerQueue:
+    Description: Queue URL for queue inserted to listen on EventBridge events
+    Value: !Ref TestEventBridgeListenerQueue
