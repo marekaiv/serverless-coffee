@@ -3,8 +3,11 @@ const sqs = new AWS.SQS()
 
 const getWithRetry = require('./samtl_get_with_retry')
 
-const receiveEventBridgeMessage = async (queueUrl, filterFunction, expectedMsgCount, timeoutSec) => {
-    console.log(`Retrieving message from test queue ${testQueueURL}`)
+const receiveEventBridgeMessage = async (stackName, busName, filterFunction, expectedMsgCount, timeoutSec) => {
+    queues = await sqs.listQueues({ QueueNamePrefix: stackName + '-' + busName + '-' + 'TestListenerQueue'}).promise() // todo max name size?
+    queueUrl = queues.QueueUrls[0]
+
+    console.log(`Retrieving message from test queue ${queueUrl}`)
 
     msgs = []  // used to collect messages received for this test (as checked by filterFunction)
 
@@ -31,7 +34,7 @@ const receiveEventBridgeMessage = async (queueUrl, filterFunction, expectedMsgCo
 
         if(receipts.length > 0) { // delete messages that belong to this test
             console.log(`Deleting ${receipts.length} SQS msgs`)
-            await sqs.deleteMessageBatch({ Entries: receipts, QueueUrl: testQueueURL }).promise()
+            await sqs.deleteMessageBatch({ Entries: receipts, QueueUrl: queueUrl }).promise()
         }
 
         return msgs

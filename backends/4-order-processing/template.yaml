@@ -164,7 +164,10 @@ Resources:
   # Injected for testing
   TestEventBridgeListenerQueue:
     Type: AWS::SQS::Queue
-    Properties: 
+    Properties:
+      QueueName: !Sub 
+      - "${AWS::StackName}-${busname}-TestListenerQueue" 
+      - busname: !Ref CoreEventBusName
       MessageRetentionPeriod: 600
 
   TestEventBridgeListenerQueuePolicy:

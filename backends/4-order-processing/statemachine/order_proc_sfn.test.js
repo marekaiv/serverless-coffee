@@ -11,23 +11,10 @@ const cfn = new AWS.CloudFormation()
 const sfnmock = require('./samtl_sfn_mock')
 const getWithRetry = require('./samtl_get_with_retry')
 const receiveEventBridgeMessage = require('./samtl_recv_eb_msg')
+const stackUtils = require('./samtl_stack_utils')
 const { fail } = require('assert')
 
 testStack = process.env.SAMTL_TEST_STACK || 'slscoffee-4'
-
-// const cloudWatch = new AWS.CloudWatch({apiVersion: '2010-08-01'})
-// const eventbridge = new AWS.EventBridge()
-// const ssm = new AWS.SSM()
-
-// SLSTEST LIBRARY?? 
-const getStackOutput = async(stackName, outputName) => {
-    return cfn.describeStacks({ StackName: stackName })
-        .promise()
-        .then(stack => {
-            return stack.Stacks[0].Outputs.filter(x => x.OutputKey == outputName)[0].OutputValue
-        })
-        // todo proper error handling
-}
 
 // // capture original SFN definition
 // beforeAll(async () => {
@@ -38,11 +25,11 @@ const getStackOutput = async(stackName, outputName) => {
 //     originalSFNDefinition = machine['definition']
 // })
 
-test('sfn test1', async () => {
+test('Test shop open but at capacity', async () => {
     userId = Math.floor(Math.random() * (2**32 - 1))
     asl = JSON.parse(aslText)
 
-    stateMachineArn = await getStackOutput(testStack, 'OrderProcessorStateMachine')
+    stateMachineArn = await stackUtils.getStackOutput(testStack, 'OrderProcessorStateMachine')
 
     // set up state machine with mocks
     sfnmock.mockTaskState(asl, 'Get Shop Status', [
@@ -80,8 +67,6 @@ test('sfn test1', async () => {
         .catch(err => fail(`Test failed: ${err}`))
 
     // check that two EventBridge messages with the correct detail-type were generated
-    testQueueURL = await getStackOutput(testStack, "TestEventBridgeListenerQueue") // todo should be based on EB name + stack name
-
     const isMessageForThisTest = (msg) => {
         body = JSON.parse(msg)
         console.log(`Parsed body to be ${JSON.stringify(body)}`)
@@ -89,7 +74,12 @@ test('sfn test1', async () => {
         return body.detail.userId == userId
     }
 
-    msgs = await receiveEventBridgeMessage(testQueueURL, isMessageForThisTest, 2 /* expected messages */, 20)
+    msgs = await receiveEventBridgeMessage(
+        testStack, 
+        await stackUtils.getStackParameter(testStack, "CoreEventBusName"), 
+        isMessageForThisTest, 
+        2 /* expected messages */, 
+        20 /* seconds */)
 
     // we're scoped down to our userId, should have exactly two messages
     expect(msgs.length).toBe(2)
