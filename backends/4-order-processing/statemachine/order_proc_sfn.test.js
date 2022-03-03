@@ -8,9 +8,9 @@ const AWS = require('aws-sdk')
 AWS.config.update({region: process.env.AWS_REGION})
 const sfn = new AWS.StepFunctions()
 const cfn = new AWS.CloudFormation()
-const sqs = new AWS.SQS()
 const sfnmock = require('./samtl_sfn_mock')
 const getWithRetry = require('./samtl_get_with_retry')
+const receiveEventBridgeMessage = require('./samtl_recv_eb_msg')
 const { fail } = require('assert')
 
 testStack = process.env.SAMTL_TEST_STACK || 'slscoffee-4'
@@ -44,6 +44,7 @@ test('sfn test1', async () => {
 
     stateMachineArn = await getStackOutput(testStack, 'OrderProcessorStateMachine')
 
+    // set up state machine with mocks
     sfnmock.mockTaskState(asl, 'Get Shop Status', [
         { except: 'something went wrong' }, // emulate failure
         { response: { statusCode: 200, body: JSON.stringify({ storeOpen: true }), isBase64Encoded: false } }
@@ -56,6 +57,7 @@ test('sfn test1', async () => {
     // updateStateMachine is eventually consistent so sleep a bit ... todo need a better way
     await new Promise(resolve => setTimeout(resolve, 2500))
 
+    // run test
     console.log(`Starting execution for ${stateMachineArn}`) // or should we start it through the EB Event rule?
     execResp = await sfn.startExecution({
             stateMachineArn: stateMachineArn,
@@ -77,48 +79,21 @@ test('sfn test1', async () => {
         })
         .catch(err => fail(`Test failed: ${err}`))
 
-    testQueueURL = await getStackOutput(testStack, "TestEventBridgeListenerQueue")
-    console.log(`Retrieving message from test queue ${testQueueURL}`)
+    // check that two EventBridge messages with the correct detail-type were generated
+    testQueueURL = await getStackOutput(testStack, "TestEventBridgeListenerQueue") // todo should be based on EB name + stack name
 
-    msgs = []
-
-    getMsgs = async () => {
-        recv = await sqs.receiveMessage({
-            AttributeNames: [ "SentTimestamp" ],
-            MaxNumberOfMessages: 10,
-            MessageAttributeNames: [ "All" ],
-            QueueUrl: testQueueURL,
-            VisibilityTimeout: 20,
-            WaitTimeSeconds: 5
-        }).promise()
-
-        console.log(`Received SQS msgs: ${JSON.stringify(recv)}`)
-
-        receipts = []
-        // filter user ids
-        recv.Messages.forEach(msg => {
-            body = JSON.parse(msg.Body)
-            console.log(`Parsed body to be ${JSON.stringify(body)}`)
-            console.log(`Found ${body.detail.userId}, looking for ${userId}`)
-            if(body.detail.userId == userId) {
-                msgs.push(body)
-                receipts.push({ Id: receipts.length, ReceiptHandle: msg.ReceiptHandle })
-            }
-        })
-
-        if(receipts.length > 0) { // delete messages that belong to this test
-            console.log(`Deleting ${receipts.length} SQS msgs`)
-            await sqs.deleteMessageBatch({ Entries: receipts, QueueUrl: testQueueURL }).promise()
-        }
-
-        return msgs
+    const isMessageForThisTest = (msg) => {
+        body = JSON.parse(msg)
+        console.log(`Parsed body to be ${JSON.stringify(body)}`)
+        console.log(`Found ${body.detail.userId}, looking for ${userId}`)
+        return body.detail.userId == userId
     }
 
-    await getWithRetry(getMsgs, (m) => m.length >= 2, 5, new Date(new Date().getTime() + 20000))
+    msgs = await receiveEventBridgeMessage(testQueueURL, isMessageForThisTest, 2 /* expected messages */, 20)
 
     // we're scoped down to our userId, should have exactly two messages
     expect(msgs.length).toBe(2)
 
-    detailTypes = msgs.map(x => x['detail-type'])
+    detailTypes = msgs.map(x => JSON.parse(x)['detail-type'])
     expect(detailTypes.sort()).toEqual(["OrderProcessor.ShopUnavailable", "OrderProcessor.orderFinished"])
 }, 60*1000)
