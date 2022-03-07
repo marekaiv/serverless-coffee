@@ -1,7 +1,11 @@
 const stackUtils = require('./samtl_stack_utils')
+const sfnUtils = require('./samtl_sfn_utils')
 
 module.exports = {
-    mockStepFnTaskState: require('./samtl_sfn_mock').mockTaskState,
+    stepFnMockTaskState: sfnUtils.mockTaskState,
+    stepFnWaitUntilNotRunning: sfnUtils.waitForSFNToStop,
+    stepFnUpdate: sfnUtils.updateDefinition,
+    
     receiveEventBridgeMessage: require('./samtl_recv_eb_msg'),
 
     // general

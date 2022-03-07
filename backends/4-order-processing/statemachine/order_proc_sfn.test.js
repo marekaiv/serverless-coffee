@@ -2,16 +2,12 @@
 
 // Load SFN definition -- could also get from SFN itself 
 fs = require('fs')
-aslText = fs.readFileSync('op.asl.json')
+asl = JSON.parse(fs.readFileSync('op.asl.json'))
 
 const AWS = require('aws-sdk')
 AWS.config.update({region: process.env.AWS_REGION})
 const sfn = new AWS.StepFunctions()
-const cfn = new AWS.CloudFormation()
-const sfnmock = require('./samtl_sfn_mock')
-const getWithRetry = require('./samtl_get_with_retry')
-const receiveEventBridgeMessage = require('./samtl_recv_eb_msg')
-const stackUtils = require('./samtl_stack_utils')
+const samtl = require('./samtl')
 const { fail } = require('assert')
 
 testStack = process.env.SAMTL_TEST_STACK || 'slscoffee-4'
@@ -26,23 +22,16 @@ testStack = process.env.SAMTL_TEST_STACK || 'slscoffee-4'
 // })
 
 test('Test shop open but at capacity', async () => {
+    stateMachineArn = await samtl.getStackOutput(testStack, 'OrderProcessorStateMachine')
     userId = Math.floor(Math.random() * (2**32 - 1))
-    asl = JSON.parse(aslText)
-
-    stateMachineArn = await stackUtils.getStackOutput(testStack, 'OrderProcessorStateMachine')
 
     // set up state machine with mocks
-    sfnmock.mockTaskState(asl, 'Get Shop Status', [
+    samtl.stepFnMockTaskState(asl, 'Get Shop Status', [
         { except: 'something went wrong' }, // emulate failure
         { response: { statusCode: 200, body: JSON.stringify({ storeOpen: true }), isBase64Encoded: false } }
     ])
-    sfnmock.mockTaskState(asl, 'Get Capacity Status', { response: { isCapacityAvailable: false } })
-
-    // update SFN with mock
-    resp = await sfn.updateStateMachine({ stateMachineArn: stateMachineArn, definition: JSON.stringify(asl) }).promise()
-    console.log(`SFN Update success ${JSON.stringify(resp)}`)
-    // updateStateMachine is eventually consistent so sleep a bit ... todo need a better way
-    await new Promise(resolve => setTimeout(resolve, 2500))
+    samtl.stepFnMockTaskState(asl, 'Get Capacity Status', { response: { isCapacityAvailable: false } })
+    await samtl.stepFnUpdate(stateMachineArn, JSON.stringify(asl))
 
     // run test
     console.log(`Starting execution for ${stateMachineArn}`) // or should we start it through the EB Event rule?
@@ -52,14 +41,8 @@ test('Test shop open but at capacity', async () => {
         }).promise()
     console.log(`Execution started: ${JSON.stringify(execResp)}`)
 
-    // wait until SFN execution completes
-    getResult = async () => sfn.describeExecution({ executionArn: execResp.executionArn }).promise()
-    checkResult = (resp) => {
-        console.log(`checkResult ${JSON.stringify(resp)}`)
-        return resp.status != 'RUNNING'
-    }
-    
-    await getWithRetry(getResult, checkResult, 5, new Date(new Date().getTime() + 5000))
+    // wait until SFN execution completes -- optional and not possible for express state machines    
+    await samtl.stepFnWaitUntilNotRunning(execResp.executionArn, 5000 /* ms */)
         .then(resp => {
             console.log(`SFN Done ${JSON.stringify(resp)}`)
             expect(resp.status).toBe('SUCCEEDED')
@@ -69,17 +52,16 @@ test('Test shop open but at capacity', async () => {
     // check that two EventBridge messages with the correct detail-type were generated
     const isMessageForThisTest = (msg) => {
         body = JSON.parse(msg)
-        console.log(`Parsed body to be ${JSON.stringify(body)}`)
-        console.log(`Found ${body.detail.userId}, looking for ${userId}`)
+        console.log(`Parsed body to be ${JSON.stringify(body)}, checking userid match for ${userId}`)
         return body.detail.userId == userId
     }
 
-    msgs = await receiveEventBridgeMessage(
+    msgs = await samtl.receiveEventBridgeMessage(
         testStack, 
-        await stackUtils.getStackParameter(testStack, "CoreEventBusName"), 
+        await samtl.getStackParameter(testStack, "CoreEventBusName"), 
         isMessageForThisTest, 
         2 /* expected messages */, 
-        20 /* seconds */)
+        20 /* timout seconds */)
 
     // we're scoped down to our userId, should have exactly two messages
     expect(msgs.length).toBe(2)
