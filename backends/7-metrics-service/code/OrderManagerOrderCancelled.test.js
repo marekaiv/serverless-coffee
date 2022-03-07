@@ -69,7 +69,6 @@ const _getWithRetry = async (apiCall, checkApiCallResult, maxRetries, maxEndTime
 
   await exponentialDelay(retryCount, 2);
   return _getWithRetry(apiCall, checkApiCallResult, maxRetries, maxEndTime, retryCount + 1, lastError);
-
 };
 
 const getWithRetry = async (apiCall, checkApiCallResult, maxRetries, maxEndTime) => {
