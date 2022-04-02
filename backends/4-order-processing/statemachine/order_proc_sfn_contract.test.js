@@ -8,7 +8,6 @@ const AWS = require('aws-sdk')
 AWS.config.update({region: process.env.AWS_REGION})
 const eventbridge = new AWS.EventBridge()
 const samtl = require('./samtl')
-const { fail } = require('assert')
 
 testStack = process.env.SAMTL_TEST_STACK || 'slscoffee-4'
 
@@ -24,7 +23,7 @@ test('Test shop open but at capacity contract test', async () => {
     samtl.stepFnMockTaskState(asl, 'Get Capacity Status', { response: { isCapacityAvailable: false } })
     await samtl.stepFnUpdate(stateMachineArn, JSON.stringify(asl))
 
-    // trigger test test
+    // trigger test
     const params = { Entries: [{
         Detail: JSON.stringify({
           orderId: 'order' + userId,
@@ -53,7 +52,7 @@ test('Test shop open but at capacity contract test', async () => {
         busName, 
         isMessageForThisTest, 
         2 /* expected messages */, 
-        20 /* timout seconds */)
+        20 /* timeout seconds */)
 
     console.log(`Got msgs ${JSON.stringify(msgs)}`)
 

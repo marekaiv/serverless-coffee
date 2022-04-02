@@ -20,6 +20,8 @@ mockTaskState = (asl, name, output) => {
     }
 }
 
+// others replace states with Pass to fix output value
+
 waitForSFNToStop = async (executionArn, timeoutMSec) => {
     getResult = async () => sfn.describeExecution({ executionArn: executionArn }).promise()
     checkResult = (resp) => {
